@@ -1,0 +1,15 @@
+# PyCharm / JetBrains IDE
+.idea/
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.vcxproj.*
+
+# OS-specific files
+.DS_Store       # macOS
+Thumbs.db       # Windows
+
+# Logs
+*.log
