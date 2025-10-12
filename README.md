@@ -16,9 +16,12 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <a href="https://github.com/Katsumi852/LiftedDynamics-UserStudy">
-    <img src="images/logo.png" alt="Logo" width="80" height="80">
-  </a>
+
+[//]: # (  <a href="https://github.com/Katsumi852/LiftedDynamics-UserStudy">)
+
+[//]: # (    <img src="images/logo.png" alt="Logo" width="80" height="80">)
+
+[//]: # (  </a>)
 
 <h3 align="center">LiftedDynamics-UserStudy</h3>
 
@@ -282,9 +285,10 @@ Link: [https://github.com/Katsumi852/LiftedDynamics-UserStudy](https://github.co
 
 [license-shield]: https://img.shields.io/github/license/Katsumi852/LiftedDynamics-UserStudy.svg?style=for-the-badge
 
-[license-url]: https://github.com/Katsumi852/LiftedDynamics-UserStudy/blob/master/LICENSE.txt
+[license-url]: https://github.com/Katsumi852/LiftedDynamics-UserStudy/blob/master/LICENSE
 
-[product-screenshot]: images/screenshot.png
+[//]: # ([product-screenshot]: images/screenshot.png)
+
 <!-- Shields.io badges. You can a comprehensive list with many more badges at: https://github.com/inttter/md-badges -->
 
 [Python.org]: https://img.shields.io/badge/Python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54
