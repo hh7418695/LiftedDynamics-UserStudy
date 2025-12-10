@@ -8,6 +8,10 @@
 *.vcxproj.*
 udp_client/udp_client/Release/
 udp_client/udp_client/Debug/
+#+++++
+x64/
+Debug/
+Release/
 
 # OS-specific files
 .DS_Store
@@ -15,3 +19,19 @@ Thumbs.db
 
 # Logs
 *.log
+
+# 忽略 Python 缓存
+__pycache__/
+*.pyc
+# 忽略 VS Code 配置 (可选，如果不想同步个人配置)
+CppProperties.json
+# 忽略实验数据结果 (建议忽略，除非你想备份数据)
+behaviour_results/
+psychophysics_results/
+#*/My Advisor Results - udp_client/
+# 忽略 Intel Advisor 结果文件夹
+*My Advisor Results*
+*.advixeproj
+*.advidb2
+*.dflgadvixe
+*.infoadvixe
