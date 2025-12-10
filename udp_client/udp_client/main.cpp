@@ -54,14 +54,15 @@ HDCallbackCode HDCALLBACK master_interface(void* data)
 
 	hdBeginFrame(hHD);
 	hdGetDoublev(HD_CURRENT_POSITION, position);
+	printf("pos: %.2f  %.2f  %.2f\n", position[0], position[1], position[2]);
 	hdGetDoublev(HD_CURRENT_TRANSFORM, trans);
 	hdGetDoublev(HD_CURRENT_GIMBAL_ANGLES, angles);
 	hdGetDoublev(HD_CURRENT_BUTTONS, button);
 
 	HDfloat baseForce[3];
 	float force_multiplier = 0.02;
-	float center[3] = { 0.0, 20.0, 30.0 };  // should be in cm (0.0, 20.0, 40.0)
-
+	// float center[3] = { 0.0, 20.0, 30.0 };  // should be in cm (0.0, 20.0, 40.0)
+	float center[3] = { 0.0, 0.0, 0.0 };
 	button_click = (int)button[0];
 	if (button_click)
 	{
