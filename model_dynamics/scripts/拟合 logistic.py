@@ -71,3 +71,4 @@ plt.title("Psychometric curve with fitted logistic (stretching)")
 plt.grid(True)
 plt.legend()
 plt.show()
+
