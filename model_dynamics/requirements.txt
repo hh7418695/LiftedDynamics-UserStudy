@@ -1,10 +1,27 @@
-fire==0.6.0
-matplotlib==3.9.0
-jraph==0.0.6.dev0
+# ============================================================================
+# LiftedDynamics-UserStudy Requirements (TESTED & VERIFIED)
+# Python 3.11 ONLY - DO NOT use Python 3.12 or 3.13
+# Last verified: 2026-02-06
+# ============================================================================
+
+# Core Scientific Computing
 numpy==1.26.4
-pandas==2.2.2
 scipy==1.12.0
-scikit-learn==1.5.0
+pandas==2.2.3
+
+# JAX Ecosystem (VERSION LOCKED - DO NOT CHANGE)
+dm-haiku==0.0.10
+optax==0.1.9
 jax==0.4.23
 jaxlib==0.4.23
 jax-md==0.2.8
+jraph==0.0.6.dev0
+
+# Machine Learning
+scikit-learn==1.5.2
+
+# Visualization
+matplotlib==3.9.2
+
+# CLI
+fire==0.7.1
