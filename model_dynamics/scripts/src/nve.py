@@ -37,28 +37,49 @@ def canonicalize_mass(mass):
 
 
 class NVEStates():
+    """Legacy wrapper class for NVEState - NOT USED in current codebase.
+
+    Note: This class has bugs (missing position_lead/velocity_lead initialization,
+    wrong return type in __getitem__). Kept for backward compatibility but should
+    not be used. Use nve_DIY and NVEState_DIY instead.
+    """
     def __init__(self, states):
         self.position = states.position
         self.velocity = states.velocity
         self.force = states.force
         self.mass = states.mass
         self.index = 0
+        # Bug fix: Initialize missing attributes
+        self.position_lead = getattr(states, 'position_lead', None)
+        self.velocity_lead = getattr(states, 'velocity_lead', None)
 
     def __len__(self):
         return len(self.position)
 
     def __getitem__(self, key):
-        if isinstance(key, int):
-            return NVEState(self.position[key], self.velocity[key],
-                            self.position_lead[key], self.velocity_lead[key],
-                            self.force[key], self.mass[key])
+        # Bug fix: Return correct type based on whether lead positions exist
+        if self.position_lead is not None and self.velocity_lead is not None:
+            if isinstance(key, int):
+                return NVEState_DIY(self.position[key], self.velocity[key],
+                                self.position_lead[key], self.velocity_lead[key],
+                                self.force[key], self.mass[key])
+            else:
+                return NVEState_DIY(self.position[key],
+                                self.velocity[key],
+                                self.position_lead[key],
+                                self.velocity_lead[key],
+                                self.force[key],
+                                self.mass[key])
         else:
-            return NVEState(self.position[key],
-                            self.velocity[key],
-                            self.position_lead[key],
-                            self.velocity_lead[key],
-                            self.force[key],
-                            self.mass[key])
+            # Fallback to basic NVEState if no lead positions
+            if isinstance(key, int):
+                return NVEState(self.position[key], self.velocity[key],
+                                self.force[key], self.mass[key])
+            else:
+                return NVEState(self.position[key],
+                                self.velocity[key],
+                                self.force[key],
+                                self.mass[key])
 
     def __iter__(self, ):
         return (self.__getitem__(i) for i in range(len(self)))
@@ -110,23 +131,32 @@ def nve(energy_or_force_fn: Callable[..., Array],
 
 @dataclasses.dataclass
 class NVEState_DIY:
+    """State for NVE (microcanonical) ensemble with leader node tracking.
+
+    This dataclass stores the complete state of the system including:
+    - position: positions of object nodes
+    - velocity: velocities of object nodes
+    - position_lead: position of the virtual leader node (user's haptic stylus)
+    - velocity_lead: velocity of the virtual leader node
+    - force: forces acting on object nodes
+    - mass: masses of object nodes
+
+    Note: This is the actively used state representation in the haptic rendering system.
+    """
     position: Array
-    # momentum: Array
-    # this is the reason why it causes weird simulations!!! the original authors just copied the jax nve function,
-    # without paying attention to the meaning of the variables: momentum instead of velocity. They use mass=1.0 so
-    # there is no problem, but it is totally a misuse! (happens when you obtain the pred_traj.velocity)
     velocity: Array
     position_lead: Array
     velocity_lead: Array
     force: Array
     mass: Array
 
-    # @property
-    # def velocity(self) -> Array:
-    #     return self.momentum / 1.0
-
 
 class NVEStates_DIY():
+    """Wrapper class for NVEState_DIY - NOT USED in current codebase.
+
+    Note: Kept for backward compatibility but not actively used.
+    The main simulation uses nve_DIY function directly.
+    """
     def __init__(self, states):
         self.position = states.position
         self.velocity = states.velocity
@@ -140,12 +170,13 @@ class NVEStates_DIY():
         return len(self.position)
 
     def __getitem__(self, key):
+        # Bug fix: Return NVEState_DIY instead of NVEState
         if isinstance(key, int):
-            return NVEState(self.position[key], self.velocity[key],
+            return NVEState_DIY(self.position[key], self.velocity[key],
                             self.position_lead[key], self.velocity_lead[key],
                             self.force[key], self.mass[key])
         else:
-            return NVEState(self.position[key],
+            return NVEState_DIY(self.position[key],
                             self.velocity[key],
                             self.position_lead[key],
                             self.velocity_lead[key],
