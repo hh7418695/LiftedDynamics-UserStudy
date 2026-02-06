@@ -67,7 +67,8 @@ def pair2mat(
             oneh = jnp.zeros(
                 (N, colnum(species_count - 1, species_count - 1, species_count))
                 )
-            oneh = jax.ops.index_update(oneh, jnp.index_exp[:, int(col - 1)], 1)
+            # Updated from deprecated jax.ops.index_update to modern .at[] syntax
+            oneh = oneh.at[:, int(col - 1)].set(1)
             return oneh
 
         def pot_pair_wise():

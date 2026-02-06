@@ -61,37 +61,62 @@ def FFLNN(x, v, params):
 
 
 def LNN(x, v, params):
-    """
-    x: Vector
-    v: Vector
+    """Lagrangian Neural Network.
+
+    Computes the Lagrangian using a neural network that takes both
+    position and velocity as input.
+
+    Args:
+        x: Position vector (will be flattened)
+        v: Velocity vector (will be flattened)
+        params: Neural network parameters
+
+    Returns:
+        Scalar Lagrangian value
     """
     x_ = x.reshape(-1, )
     v_ = v.reshape(-1, )
     return forward_pass(params, jnp.vstack([x_, v_]))[0]
 
 
-def _V(x, params):
-    pass
-
-
 def _T(v, mass=jnp.array([1.0])):
+    """Kinetic energy: T = 0.5 * sum(m * v^2).
+
+    Args:
+        v: Velocity array of shape (N, dim)
+        mass: Mass array, either scalar or shape (N,)
+
+    Returns:
+        Total kinetic energy (scalar)
+    """
     if len(mass) != len(v):
         mass = mass[0] * jnp.ones((len(v)))
     out = mass * jnp.square(v).sum(axis=1)
     return 0.5 * out.sum()
 
 
-def _L(x, v, params):
-    pass
-
-
 def lagrangian(x, v, params):
+    """Placeholder for Lagrangian function L = T - V.
+
+    This function should be overridden or replaced with a specific
+    implementation in the main simulation code. See main.py for
+    the actual sim_Lagrangian definition.
+
+    Args:
+        x: Position vector
+        v: Velocity vector
+        params: System parameters
+
+    Returns:
+        Lagrangian value (scalar)
+
+    Note: This is a placeholder that will be replaced by the actual
+    Lagrangian function passed to accelerationFull().
     """
-    lagrangian calls lnn._L
-    x: Vector
-    v: Vector
-    """
-    return _L(x, v, params)
+    raise NotImplementedError(
+        "lagrangian() is a placeholder. Use a specific Lagrangian "
+        "function (e.g., sim_Lagrangian in main.py) instead."
+    )
 
 
 def calM(x, v, params):
@@ -236,8 +261,11 @@ def useNN(norm=True):
             if cutoff is None:
                 return forward_pass(params, x, activation_fn=SquarePlus)
             else:
-                return jnp.where(x[-1] < cutoff, forward_pass(params, x, activation_fn=SquarePlus),
-                                 forward_pass(params, jax.ops.index_update(x, -1, cutoff), activation_fn=SquarePlus))
+                # Updated from deprecated jax.ops.index_update to modern .at[] syntax
+                x_clipped = x.at[-1].set(cutoff)
+                return jnp.where(x[-1] < cutoff,
+                                 forward_pass(params, x, activation_fn=SquarePlus),
+                                 forward_pass(params, x_clipped, activation_fn=SquarePlus))
 
         return f
 
