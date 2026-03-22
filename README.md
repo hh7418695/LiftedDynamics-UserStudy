@@ -107,7 +107,7 @@ These are the tools and libraries you need to have installed before running the 
 
 * [OpenHaptics SDK](https://support.3dsystems.com/s/article/OpenHaptics-for-Windows-Developer-Edition-v35?language=en_US)
   for C++ program
-* Python 3.9.7 (optional)
+* Python 3.11.x (optional)
     ```sh
     python --version
     ```
