@@ -28,6 +28,7 @@ CppProperties.json
 # 忽略实验数据结果 (建议忽略，除非你想备份数据)
 behaviour_results/
 psychophysics_results/
+model_dynamics/results/
 #*/My Advisor Results - udp_client/
 # 忽略 Intel Advisor 结果文件夹
 *My Advisor Results*

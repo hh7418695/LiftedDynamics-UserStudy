@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Always use relative paths when referring to files. Do not use absolute paths.
+
 ## Project Overview
 
 This is a haptic rendering research system for user studies on the dynamics of lifted objects during haptic interactions. The system uses a TouchX haptic device to provide real-time force feedback based on physics simulations of flexible objects. The architecture consists of two main components that communicate via UDP:
@@ -215,6 +217,46 @@ Files generated:
 - OpenHaptics SDK 3.5 - TouchX device drivers and API
 - Visual Studio 2019 - Build toolchain
 - Winsock2 - UDP networking
+
+## Psychophysics Experiment (2AFC)
+
+The behavioral experiment layer runs independently of the haptic rendering loop and collects two-alternative forced-choice (2AFC) discrimination data.
+
+### Running the experiment
+
+```bash
+cd model_dynamics/scripts
+python psychophysics_loop.py   # full experiment with resume/backup support
+python test_2afc.py            # minimal prototype (keyboard-only, no data persistence)
+```
+
+`psychophysics_loop.py` prompts for participant ID (letters only, uppercased) and block type (stretch or bend), then runs 40 trials (10 pairs × 4 reps). Trial order is saved to `behaviour_results/participant_{ID}_{block}_order.json` so sessions can be resumed after interruption.
+
+### Behavioral data
+
+Results land in `behaviour_results/`:
+- `participant_{ID}_{block}_order.json` - randomized trial order (persists across sessions)
+- `participant_{ID}_{block}_behaviour.csv` - one row per trial with fields: `participant_id`, `trial_index`, `block_type`, `ref_object_id`, `comp_object_id`, `k_stretch_ref/comp`, `k_bend_ref/comp`, `first_object`, `second_object`, `chosen_object`, `is_correct`, `notes`
+
+### Object stiffness mapping
+
+| Object IDs | Varies | Fixed |
+|---|---|---|
+| 1–5 | `ks` = 50, 287.5, 525, 762.5, 1000 (×10³ N/m) | `kb` = 0.05 ×10³ N/m |
+| 6–10 | `kb` = 0, 0.025, 0.05, 0.075, 0.1 (×10³ N/m) | `ks` = 525 ×10³ N/m |
+
+`get_stiffness_for_object(object_id)` in `psychophysics_loop.py` is the single source of truth for this mapping — keep it consistent with `main.py`.
+
+### Enabling full output in haptic rendering
+
+By default `execute_hapticRendering()` only saves `render_hist.csv`. To enable optional outputs, edit `main.py` line ~1084:
+
+```python
+execute_hapticRendering(
+    execute_TrajPlot=True,       # generates render.gif
+    execute_SpeedAnalysis=True,  # generates render_execution_time.png
+)
+```
 
 ## Research Context
 

@@ -1084,4 +1084,287 @@ def main(seed, dt, stride, dim, socket_serverIP, socket_serverPort, socket_buffe
             execute_hapticRendering()
 
 
-fire.Fire(Main)
+def run_single_object(
+        sock, object_id: int, participant_id: str,
+        pi_input_fn=None,
+        seed=42, dt=1.0e-4, stride=10, dim=3,
+        socket_bufferSize=512,
+        ):
+    """
+    Run haptic rendering for a single object using an externally managed socket.
+    Called by experiment_runner.py instead of the interactive main() loop.
+
+    Parameters:
+        sock: bound UDP socket (shared across trials)
+        object_id: 1-10
+        participant_id: string, used for result file paths
+        pi_input_fn: optional callable() -> str, checked each loop for 's'/'q'
+        seed, dt, stride, dim, socket_bufferSize: same as main()
+
+    Returns:
+        'ok'   - rendering finished normally (stop signal received)
+        'skip' - PI requested skip
+        'quit' - PI requested quit
+    """
+    import csv
+    import json
+    import time
+    from datetime import datetime
+    from pathlib import Path
+    from functools import partial
+
+    import jax
+    import jax.numpy as jnp
+    import numpy as np
+    from jax import jit
+
+    jax.config.update("jax_enable_x64", True)
+
+    from src.md import predition
+    from src.utils import KalmanFilter3D, plot_trajectory
+    from src import lnn
+
+    const_numerical = 1e-10
+    const_gravity_acc = -9.8
+
+    rng = jax.random.PRNGKey(seed)
+
+    # ── Object parameters (mirrors main()) ───────────────────────────────────
+    N = 5
+    masses = np.array([40.0] * N)
+    object_mass = np.sum(masses)
+    length = np.array([0.05] * (N - 1))
+
+    stretching_val_list = np.linspace(50, 1000, num=5)
+    ks_val = stretching_val_list[object_id - 1] if 1 <= object_id <= 5 else stretching_val_list[2]
+    object_stiffness_stretching_sim = np.array([ks_val] * N) * 1e3
+
+    bending_val_list = np.linspace(0, 0.1, num=5)
+    kb_val = bending_val_list[object_id - 6] if 6 <= object_id <= 10 else bending_val_list[2]
+    object_stiffness_bending_sim = np.array([kb_val] * N) * 1e3
+
+    object_damping_scale = 0.01 * 1e3
+    object_damping_sim = np.array([0.1] * N) * object_damping_scale
+
+    VirtualCoupling_stiffness = 750 * 1e3
+    VirtualCoupling_damping = 25 * 1e3
+
+    # ── JIT helpers ───────────────────────────────────────────────────────────
+    @jit
+    def get_angle(vec1, vec2):
+        v1 = vec1 / (jnp.linalg.norm(vec1) + const_numerical)
+        v2 = vec2 / (jnp.linalg.norm(vec2) + const_numerical)
+        return jnp.arccos(jnp.clip(jnp.dot(v1, v2), -1.0, 1.0))
+
+    @jit
+    def getVector_relativeVelocity(vel_from, pos_from, vel_to, pos_to):
+        pos_rel = pos_to - pos_from
+        vel_rel = vel_to - vel_from
+        dist = jnp.sqrt(jnp.square(pos_rel).sum())
+        return vel_rel / (dist + const_numerical)
+
+    @jit
+    def get_squaredDistance(x, x_lead, original_length):
+        x_diff = x - x_lead
+        direction = x_diff / (jnp.linalg.norm(x_diff) + const_numerical)
+        return jnp.square(x_diff - original_length * direction).sum()
+
+    @jit
+    def getEnergy_stretching(x, x_lead, stiffness, length):
+        return 0.5 * stiffness * get_squaredDistance(x, x_lead, length)
+
+    @jit
+    def getEnergy_bending(angle, stiffness):
+        return 0.5 * stiffness * (angle ** 2)
+
+    @jit
+    def getForce_virtualCoupling(x, v, x_lead, v_lead):
+        x_diff = x[0, :] - x_lead[0, :]
+        v_diff = v[0, :] - v_lead[0, :]
+        force = -VirtualCoupling_stiffness * x_diff - VirtualCoupling_damping * v_diff
+        force_gravity = jnp.zeros(dim).at[2].set(object_mass * const_gravity_acc)
+        return force + force_gravity
+
+    @jit
+    def getCoordinate_TouchX2Python(array):
+        c = array.reshape(dim)
+        return jnp.array([c[0], -c[2], c[1]]).reshape(array.shape)
+
+    @jit
+    def getCoordinate_Python2TouchX(array):
+        c = array.reshape(dim)
+        return jnp.array([c[0], c[2], -c[1]]).reshape(array.shape)
+
+    # ── Physics ───────────────────────────────────────────────────────────────
+    def sim_bendingEnergy(x):
+        result = 0.0
+        for i in range(2, N):
+            angle = get_angle(x[i-1] - x[i-2], x[i] - x[i-1])
+            result += getEnergy_bending(angle, object_stiffness_bending_sim[i])
+        return result
+
+    def sim_stretchingEnergy(x):
+        result = 0.0
+        for i in range(1, N):
+            result += getEnergy_stretching(x[i], x[i-1], object_stiffness_stretching_sim[i], length[i-1])
+        return result
+
+    def sim_gravityEnergy(x):
+        return (masses * const_gravity_acc * x[:, 2]).sum()
+
+    def sim_potentialEnergy(x):
+        return sim_gravityEnergy(x) + sim_bendingEnergy(x) + sim_stretchingEnergy(x)
+
+    sim_kineticEnergy = partial(lnn._T, mass=masses)
+
+    def sim_Lagrangian(x, v, params):
+        return sim_kineticEnergy(v) - sim_potentialEnergy(x)
+
+    def sim_externalForce(x, v, x_lead, v_lead, params):
+        result = jnp.zeros((N, dim))
+        force_vc = getForce_virtualCoupling(x=x, v=v, x_lead=x_lead, v_lead=v_lead)
+        result = result.at[0, :].set(force_vc)
+        return result.reshape(-1, 1)
+
+    def sim_damping(x, v, x_lead, v_lead, params):
+        vel_rel = jnp.zeros((N, dim))
+        for i in range(1, N):
+            vel_rel = vel_rel.at[i, :].set(
+                getVector_relativeVelocity(v[i-1], x[i-1], v[i], x[i])
+            )
+        return (-vel_rel * object_damping_sim.reshape((N, 1))).reshape(-1, 1)
+
+    def sim_constraints(x, v, params):
+        return jnp.zeros((1, N * dim))
+
+    sim_acceleration = jit(
+        lnn.accelerationFull(
+            N, dim,
+            lagrangian=sim_Lagrangian,
+            non_conservative_forces=sim_damping,
+            external_force=sim_externalForce,
+            constraints=sim_constraints,
+        )
+    )
+
+    def sim_totalForce(R, V, R_lead, V_lead, params, mass):
+        acc = sim_acceleration(R, V, R_lead, V_lead, params)
+        return acc if mass is None else acc * mass.reshape(-1, 1)
+
+    # initial state
+    R_init = jnp.zeros((N, dim))
+    for i in range(N):
+        R_init = R_init.at[i, 2].set(-sum(length[:i]))
+    V_init = jnp.zeros((N, dim))
+
+    @partial(jax.jit, static_argnames=['runs'])
+    def sim_nextState(R, V, R_lead, V_lead, runs):
+        return predition(R, V, R_lead, V_lead, None, sim_totalForce,
+                         lambda R, dR, V: (R + dR, V), dt, masses, runs, stride)
+
+    # ── Result path ───────────────────────────────────────────────────────────
+    result_dir = (Path("../results") / f"Participant-{participant_id}" /
+                  f"Obj-{object_id}" / datetime.now().strftime("%Y%m%d_%H%M%S"))
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    # ── Rendering loop ────────────────────────────────────────────────────────
+    object_position, object_velocity = R_init, V_init
+    kf = KalmanFilter3D(0.001, 0.001, 0.01)
+    kf.x[:3] = [0.0, 0.0, 0.0]
+
+    buffer_size = 1000 * 20
+    buffer_interval = 5
+    buffer_object_position = np.zeros((buffer_size, N, dim))
+    buffer_user_position   = np.zeros((buffer_size, 1, dim))
+    buffer_force           = np.zeros((buffer_size, 1, dim))
+    buffer_time            = np.zeros(buffer_size)
+
+    com_count = -1
+    buffer_count = -1
+    hist_time = []
+    start_time_global = time.time()
+
+    while True:
+        com_count += 1
+
+        # Check PI emergency input (non-blocking)
+        if pi_input_fn is not None:
+            cmd = pi_input_fn()
+            if cmd == "q":
+                return "quit"
+            if cmd == "s":
+                return "skip"
+
+        data_byte, address = sock.recvfrom(socket_bufferSize)
+        data_dict = json.loads(data_byte.decode("utf-8"))
+        data_position  = data_dict.get("position", [])
+        data_timestamp = data_dict.get("timestamp")
+
+        # Stop signal from C++ (or mock)
+        if data_timestamp < 0:
+            break
+
+        diff_time = time.time() - start_time_global
+        hist_time.append(diff_time)
+
+        user_position = getCoordinate_TouchX2Python(np.array([data_position]) * 1e-3)
+
+        if com_count <= 1:
+            kf.x[:3] = np.array(user_position).flatten()[:3]
+            user_velocity = np.zeros((1, dim))
+        else:
+            kf.predict(dt)
+            kf.update(np.array(user_position).flatten()[:3])
+            user_velocity = np.array(kf.x[3:6]).reshape(1, dim)
+
+        force = np.array(getForce_virtualCoupling(
+            x=object_position, v=object_velocity,
+            x_lead=user_position, v_lead=user_velocity,
+        ))
+        force_max = np.max(np.abs(force))
+        if force_max > 2.5:
+            force = force / force_max * 2.5
+
+        predict_traj = sim_nextState(
+            R=object_position, V=object_velocity,
+            R_lead=user_position, V_lead=user_velocity,
+            runs=1,
+        )
+        object_position = predict_traj.position.reshape(N, dim)
+        object_velocity = predict_traj.velocity.reshape(N, dim)
+
+        output_dict = dict(force=getCoordinate_Python2TouchX(force).tolist())
+        sock.sendto(json.dumps(output_dict).encode("utf-8"), address)
+
+        if com_count % buffer_interval == 0 and buffer_count + 1 < buffer_size:
+            buffer_count += 1
+            buffer_object_position[buffer_count] = object_position
+            buffer_user_position[buffer_count]   = user_position
+            buffer_force[buffer_count]            = force
+            buffer_time[buffer_count]             = hist_time[-1]
+
+    # ── Save CSV ──────────────────────────────────────────────────────────────
+    csv_path = result_dir / "render_hist.csv"
+    with open(csv_path, mode="w", newline="") as f:
+        writer = csv.writer(f)
+        header = ["Timestamp (s)",
+                  "Rendered Force X (N)", "Rendered Force Y (N)", "Rendered Force Z (N)",
+                  "User Position X (m)", "User Position Y (m)", "User Position Z (m)"]
+        for n in range(N):
+            for ax in ["X", "Y", "Z"]:
+                header.append(f"Node {n} Position {ax} (m)")
+        writer.writerow(header)
+        for k in range(buffer_count + 1):
+            row = [buffer_time[k]]
+            row += buffer_force[k, 0, :].tolist()
+            row += buffer_user_position[k, 0, :].tolist()
+            for n in range(N):
+                row += buffer_object_position[k, n, :].tolist()
+            writer.writerow(row)
+    print(f"  Render history saved → {csv_path}")
+
+    return "ok"
+
+
+if __name__ == "__main__":
+    fire.Fire(Main)
