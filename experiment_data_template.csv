@@ -1,0 +1,4 @@
+ParticipantID,TrialNumber,ObjectID,StretchingStiffness,BendingStiffness,ResponseType,Response,ReactionTime_ms,Confidence,Notes,Timestamp
+1,1,3,475000,0,2AFC,Object1Harder,1250,High,,2024-01-15_10:30:45
+1,2,5,1000000,0,2AFC,Object2Harder,980,Medium,,2024-01-15_10:33:12
+1,3,2,262500,0,Rating,65,2100,High,Participant_reported_fatigue,2024-01-15_10:36:30
