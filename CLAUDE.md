@@ -55,94 +55,33 @@ pip install -r ./model_dynamics/requirements.txt
 
 ### Running the System
 
-#### Single Machine Setup (Windows only)
-
-**Start order matters**: Always start C++ client first, then Python server.
+**Start order matters**: Always start C++ client first, then Python GUI.
 
 1. **Start C++ UDP Client**:
    - Open `udp_client/udp_client.sln` in Visual Studio 2019
    - Build and run the project
    - The haptic device will initialize and center the stylus
 
-2. **Start Python Dynamics Server**:
+2. **Start Python GUI**:
    ```bash
    cd model_dynamics/scripts
-   python main.py --participant_id=1
+   python experiment_runner_gui.py
    ```
 
-#### Cross-Platform Setup (macOS + Windows)
-
-Since the TouchX haptic device only works on Windows, you can run Python on macOS and C++ on Windows. See `CROSS_PLATFORM_SETUP.md` for detailed instructions.
-
-**Quick setup:**
-
-1. **On macOS - Get IP address**:
-   ```bash
-   ipconfig getifaddr en0  # or en1 for ethernet
-   ```
-
-2. **On Windows - Edit C++ code**:
-   - Open `udp_client/udp_client/main.cpp`
-   - Change line 19: `#define SERVER "192.168.x.x"` (use your macOS IP)
-   - Rebuild the project
-
-3. **On macOS - Start Python server**:
-   ```bash
-   cd model_dynamics/scripts
-   python main.py --participant_id=1
-   ```
-
-4. **On Windows - Start C++ client**:
-   - Run the compiled program
-
-**Test network connection**:
-```bash
-# On macOS
-python model_dynamics/scripts/test_network.py
-```
-
-3. **Trial Settings** (when prompted in Python):
-   Format: `<object_id> <enable_haptic> <enable_animation_check> <enable_resonance_test>`
-   - Example: `5 1 1 0` - Object 5, haptic on, animation check on, resonance test off
-   - Object IDs 1-5: Vary stretching stiffness
-   - Object IDs 6-10: Vary bending stiffness
-
-4. **Interaction**:
+3. **Interaction**:
+   - The GUI manages experiment flow (participant ID, block type, trial progression)
    - Click stylus button once to start rendering
    - Shake/move the stylus to interact with virtual object
-   - Click button again to stop and view animation
-
-### Key Python Parameters
-
-When calling `main.py`, you can override defaults:
-- `--seed=42` - Random seed for reproducibility
-- `--dt=1.0e-4` - Simulation time step (100 μs)
-- `--stride=10` - Integration steps per UDP message
-- `--socket_serverIP="0.0.0.0"` - UDP server IP (use "0.0.0.0" for cross-platform, "127.0.0.1" for local)
-- `--socket_serverPort=12312` - UDP port
-- `--participant_id=1` - Participant identifier for data organization
-
-### Testing and Analysis
-
-The Python program includes built-in testing modes:
-
-**Object Animation Check** (trial setting: `X 0 1 0`):
-- Generates sinusoidal leader motion
-- Simulates object dynamics without haptic device
-- Outputs trajectory animation as GIF
-- Useful for verifying physics before user study
-
-**Resonance Frequency Test** (trial setting: `X 0 0 1`):
-- Sweeps frequencies from 0.5-5.0 Hz
-- Identifies resonance peaks
-- Outputs frequency response plot
-- Helps understand object's natural frequencies
+   - Click button again to stop
+   - GUI collects 2AFC responses after each trial pair
 
 ## Code Organization
 
 ### Python Structure (`model_dynamics/scripts/`)
 
-- `main.py` - Main entry point, UDP server, haptic rendering loop
+- `experiment_runner_gui.py` - **Main entry point** (Tkinter GUI for 2AFC experiment)
+- `render_worker.py` - Haptic rendering subprocess (spawned by GUI)
+- `psychophysics_loop.py` - Trial generation, data persistence, 2AFC logic
 - `src/lnn.py` - Lagrangian Neural Network implementation, acceleration computation
 - `src/md.py` - Molecular dynamics utilities, state prediction
 - `src/nve.py` - NVE ensemble integrator (microcanonical)
@@ -156,14 +95,15 @@ The Python program includes built-in testing modes:
 - `master_interface()` callback - Runs at 1kHz, reads position, renders force
 - Button click detection manages state transitions (idle → rendering → stop)
 
-### Key Python Functions in main.py
+### Key Python Functions
 
-- `sim_nextState()` - Predicts next object state given current state and user input
-- `getForce_virtualCoupling()` - Computes spring-damper force between user and object
-- `sim_acceleration()` - Computes accelerations using Lagrangian mechanics
-- `execute_hapticRendering()` - Main real-time rendering loop
-- `execute_objectAnimationCheck()` - Pre-visualization of object dynamics
-- `execute_resonanceFrequencyTest()` - Frequency sweep analysis
+In `render_worker.py`:
+- `render_single_object()` - Performs physics simulation and UDP haptic rendering loop
+
+In `psychophysics_loop.py`:
+- `build_block_trials()` - Generates randomized trial pairs
+- `get_stiffness_for_object()` - Maps object ID to stiffness parameters
+- `append_trial_row()` - Saves trial response data to CSV
 
 ## Data Output
 
@@ -220,17 +160,16 @@ Files generated:
 
 ## Psychophysics Experiment (2AFC)
 
-The behavioral experiment layer runs independently of the haptic rendering loop and collects two-alternative forced-choice (2AFC) discrimination data.
+The behavioral experiment is managed by `experiment_runner_gui.py` (Tkinter GUI) and collects two-alternative forced-choice (2AFC) discrimination data.
 
 ### Running the experiment
 
 ```bash
 cd model_dynamics/scripts
-python psychophysics_loop.py   # full experiment with resume/backup support
-python test_2afc.py            # minimal prototype (keyboard-only, no data persistence)
+python experiment_runner_gui.py
 ```
 
-`psychophysics_loop.py` prompts for participant ID (letters only, uppercased) and block type (stretch or bend), then runs 40 trials (10 pairs × 4 reps). Trial order is saved to `behaviour_results/participant_{ID}_{block}_order.json` so sessions can be resumed after interruption.
+The GUI prompts for participant ID and block type (stretch or bend), then runs 40 trials (10 pairs x 4 reps). Trial order is saved to `behaviour_results/participant_{ID}_{block}_order.json` so sessions can be resumed after interruption.
 
 ### Behavioral data
 
@@ -242,21 +181,10 @@ Results land in `behaviour_results/`:
 
 | Object IDs | Varies | Fixed |
 |---|---|---|
-| 1–5 | `ks` = 50, 287.5, 525, 762.5, 1000 (×10³ N/m) | `kb` = 0.05 ×10³ N/m |
-| 6–10 | `kb` = 0, 0.025, 0.05, 0.075, 0.1 (×10³ N/m) | `ks` = 525 ×10³ N/m |
+| 1-5 | `ks` = 50, 287.5, 525, 762.5, 1000 (x10^3 N/m) | `kb` = 0.05 x10^3 N/m |
+| 6-10 | `kb` = 0, 0.025, 0.05, 0.075, 0.1 (x10^3 N/m) | `ks` = 525 x10^3 N/m |
 
-`get_stiffness_for_object(object_id)` in `psychophysics_loop.py` is the single source of truth for this mapping — keep it consistent with `main.py`.
-
-### Enabling full output in haptic rendering
-
-By default `execute_hapticRendering()` only saves `render_hist.csv`. To enable optional outputs, edit `main.py` line ~1084:
-
-```python
-execute_hapticRendering(
-    execute_TrajPlot=True,       # generates render.gif
-    execute_SpeedAnalysis=True,  # generates render_execution_time.png
-)
-```
+`get_stiffness_for_object(object_id)` in `psychophysics_loop.py` is the single source of truth for this mapping.
 
 ## Research Context
 

@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(find /c/Users/Heramb/Documents/Vercetti/20260322/LiftedDynamics-UserStudy -type d -not -path */.conda/* -not -path */__pycache__/*)"
+      "Bash(find /c/Users/Heramb/Documents/Vercetti/20260322/LiftedDynamics-UserStudy -type d -not -path */.conda/* -not -path */__pycache__/*)",
+      "Bash(cd:*)"
     ]
   }
 }

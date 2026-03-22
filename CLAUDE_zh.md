@@ -53,94 +53,33 @@ pip install -r ./model_dynamics/requirements.txt
 
 ### 运行系统
 
-#### 单机设置（仅 Windows）
-
-**启动顺序很重要**：始终先启动 C++ 客户端，然后启动 Python 服务器。
+**启动顺序很重要**：始终先启动 C++ 客户端，然后启动 Python GUI。
 
 1. **启动 C++ UDP 客户端**：
    - 在 Visual Studio 2019 中打开 `udp_client/udp_client.sln`
    - 构建并运行项目
    - 触觉设备将初始化并将触笔居中
 
-2. **启动 Python 动力学服务器**：
+2. **启动 Python GUI**：
    ```bash
    cd model_dynamics/scripts
-   python main.py --participant_id=1
+   python experiment_runner_gui.py
    ```
 
-#### 跨平台设置（macOS + Windows）
-
-由于 TouchX 触觉设备仅在 Windows 上工作，您可以在 macOS 上运行 Python，在 Windows 上运行 C++。详细说明请参见 `CROSS_PLATFORM_SETUP.md`。
-
-**快速设置：**
-
-1. **在 macOS 上 - 获取 IP 地址**：
-   ```bash
-   ipconfig getifaddr en0  # 或 en1 用于以太网
-   ```
-
-2. **在 Windows 上 - 编辑 C++ 代码**：
-   - 打开 `udp_client/udp_client/main.cpp`
-   - 修改第 19 行：`#define SERVER "192.168.x.x"`（使用您的 macOS IP）
-   - 重新构建项目
-
-3. **在 macOS 上 - 启动 Python 服务器**：
-   ```bash
-   cd model_dynamics/scripts
-   python main.py --participant_id=1
-   ```
-
-4. **在 Windows 上 - 启动 C++ 客户端**：
-   - 运行编译好的程序
-
-**测试网络连接**：
-```bash
-# 在 macOS 上
-python model_dynamics/scripts/test_network.py
-```
-
-3. **试验设置**（在 Python 中提示时）：
-   格式：`<object_id> <enable_haptic> <enable_animation_check> <enable_resonance_test>`
-   - 示例：`5 1 1 0` - 物体 5，触觉开启，动画检查开启，共振测试关闭
-   - 物体 ID 1-5：改变拉伸刚度
-   - 物体 ID 6-10：改变弯曲刚度
-
-4. **交互**：
+3. **交互**：
+   - GUI 管理实验流程（参与者 ID、block 类型、试次进度）
    - 点击触笔按钮一次以开始渲染
    - 摇晃/移动触笔以与虚拟物体交互
-   - 再次点击按钮以停止并查看动画
-
-### 关键 Python 参数
-
-调用 `main.py` 时，可以覆盖默认值：
-- `--seed=42` - 用于可重复性的随机种子
-- `--dt=1.0e-4` - 仿真时间步长（100 μs）
-- `--stride=10` - 每个 UDP 消息的积分步数
-- `--socket_serverIP="0.0.0.0"` - UDP 服务器 IP（跨平台使用 "0.0.0.0"，本地使用 "127.0.0.1"）
-- `--socket_serverPort=12312` - UDP 端口
-- `--participant_id=1` - 用于数据组织的参与者标识符
-
-### 测试和分析
-
-Python 程序包含内置测试模式：
-
-**物体动画检查**（试验设置：`X 0 1 0`）：
-- 生成正弦波领导运动
-- 在没有触觉设备的情况下模拟物体动力学
-- 输出轨迹动画为 GIF
-- 用于在用户研究前验证物理
-
-**共振频率测试**（试验设置：`X 0 0 1`）：
-- 扫描 0.5-5.0 Hz 的频率
-- 识别共振峰
-- 输出频率响应图
-- 帮助理解物体的固有频率
+   - 再次点击按钮以停止
+   - GUI 在每对试次后收集 2AFC 响应
 
 ## 代码组织
 
 ### Python 结构 (`model_dynamics/scripts/`)
 
-- `main.py` - 主入口点，UDP 服务器，触觉渲染循环
+- `experiment_runner_gui.py` - **主入口**（Tkinter GUI，2AFC 实验界面）
+- `render_worker.py` - 触觉渲染子进程（由 GUI 调用）
+- `psychophysics_loop.py` - 试次生成、数据持久化、2AFC 逻辑
 - `src/lnn.py` - 拉格朗日神经网络实现，加速度计算
 - `src/md.py` - 分子动力学工具，状态预测
 - `src/nve.py` - NVE 系综积分器（微正则）
@@ -154,14 +93,15 @@ Python 程序包含内置测试模式：
 - `master_interface()` 回调 - 以 1kHz 运行，读取位置，渲染力
 - 按钮点击检测管理状态转换（空闲 → 渲染 → 停止）
 
-### main.py 中的关键 Python 函数
+### 关键 Python 函数
 
-- `sim_nextState()` - 根据当前状态和用户输入预测下一个物体状态
-- `getForce_virtualCoupling()` - 计算用户与物体之间的弹簧-阻尼器力
-- `sim_acceleration()` - 使用拉格朗日力学计算加速度
-- `execute_hapticRendering()` - 主实时渲染循环
-- `execute_objectAnimationCheck()` - 物体动力学的预可视化
-- `execute_resonanceFrequencyTest()` - 频率扫描分析
+`render_worker.py` 中：
+- `render_single_object()` - 执行物理仿真和 UDP 触觉渲染循环
+
+`psychophysics_loop.py` 中：
+- `build_block_trials()` - 生成随机试次对
+- `get_stiffness_for_object()` - 将物体 ID 映射到刚度参数
+- `append_trial_row()` - 将试次响应数据保存到 CSV
 
 ## 数据输出
 
