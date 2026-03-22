@@ -32,7 +32,7 @@ bool master_button_JustClicked = false;
 int button_click = 0;
 bool recenter = true;
 
-bool timestamp_saved = false;
+int timestamp_saved = 0;
 int warm_up_count = 0;
 int warm_up_epoch = 5;
 
